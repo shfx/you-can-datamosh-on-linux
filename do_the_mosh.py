@@ -1,36 +1,33 @@
+import os
+import sys
+import re
+import argparse
+import subprocess
+import unicodedata
+
 start_sec = 0
-start_effect_sec = 3
-end_effect_sec   = 6
+start_effect_sec = 0
+end_effect_sec = 60
 end_sec = 60
 repeat_p_frames = 15
 output_width = 480
 fps = 25
+speed = 1.0
 
 output_directory = 'moshed_videos'
 
-
-		# here's the useful information if you're trying to adapt this into another programming language
-		# - convert the video to AVI format
-		# - designator for beginning of an i-frame: 0x0001B0
-		# - designator for the end of every frame type: 0x30306463 (usually referenced as ASCII 00dc)
-
-
-# now we get everything set up to make the video file
-
-# import makes other people's code libraries available to use in this code
-import sys
+# here's the useful information if you're trying to adapt this into another programming language
+# - convert the video to AVI format
+# - designator for beginning of an i-frame: 0x0001B0
+# - designator for the end of every frame type: 0x30306463 (usually referenced as ASCII 00dc)
 
 # This program was written for Python 3. Python 2 is similar but there are differences and this code won't work with it.
 # the argparse code library wasn't included in Python before 3.2 so those previous versions aren't supported.
-# If you're stuck with an older version of Python3 you could probably delete all the argparse stuff and it would work 
+# If you're stuck with an older version of Python3 you could probably delete all the argparse stuff and it would work
 # but the program would be less convenient to use
 if sys.version_info[0] != 3 or sys.version_info[1] < 2:
 	print('This version works with Python version 3.2 and above but not Python 2, sorry!')
 	sys.exit()
-
-import os
-import argparse
-import subprocess
 
 # this makes sure the video file exists. It is used below in the 'input_video' argparse
 def quit_if_no_video_file(video_file):
@@ -45,11 +42,24 @@ def confirm_output_directory(output_directory):
 
 	return(output_directory)
 
+# Slugify filename
+def slugify(s):
+    s = s.lower()
+    for c in [' ', '-', '.', '/']:
+        s = s.replace(c, '_')
+    s = re.sub('\W', '', s)
+    s = s.replace('_', ' ')
+    s = re.sub('\s+', ' ', s)
+    s = s.strip()
+    s = s.replace(' ', '-')
+
+    return s
+
 # this makes the options available at the command line for ease of use
 
-# 'parser' is the name of our new parser which checks the variables we give it to make sure they will probably work 
+# 'parser' is the name of our new parser which checks the variables we give it to make sure they will probably work
 # or else offer helpful errors and tips to the user at the command line
-parser = argparse.ArgumentParser() 
+parser = argparse.ArgumentParser()
 
 parser.add_argument('input_video', type=quit_if_no_video_file, help="File to be moshed")
 parser.add_argument('--start_sec',        default = start_sec,        type=float, help="Time the video starts on the original footage's timeline. Trims preceding footage.")
@@ -58,6 +68,7 @@ parser.add_argument('--start_effect_sec', default = start_effect_sec, type=float
 parser.add_argument('--end_effect_sec',   default = end_effect_sec,   type=float, help="Time the effect ends on the trimmed footage's timeline.")
 parser.add_argument('--repeat_p_frames',  default = repeat_p_frames,  type=int,   help="If this is set to 0 the result will only contain i-frames. Possibly only a single i-frame.")
 parser.add_argument('--output_width',     default = output_width,     type=int,   help="Width of output video in pixels. 480 is Twitter-friendly. Programs get real mad if a video is an odd number of pixels wide.")
+parser.add_argument('--speed',            default = speed,            type=float, help="Speed up or slow down the video using float")
 parser.add_argument('--fps',              default = fps,              type=int,   help="The number of frames per second the initial video is converted to before moshing.")
 parser.add_argument('--output_dir',       default = output_directory, type=confirm_output_directory, help="Output directory")
 
@@ -84,12 +95,15 @@ if start_effect_sec > end_effect_sec:
 # where we make new file names
 # basename seperates the file name from the directory it's in so /home/user/you/video.mp4 becomes video.mp4
 # splitext short for "split extension" splits video.mp4 into a list ['video','.mp4'] and [0] returns 'video' to file_name
-file_name = os.path.splitext( os.path.basename(input_video) )[0]
+file_name = slugify(os.path.splitext( os.path.basename(input_video) )[0])
+
 # path.join pushes the directory and file name together and makes sure there's a / between them
-input_avi =  os.path.join(output_dir, 'datamoshing_input.avi')			# must be an AVI so i-frames can be located in binary file
+# must be an AVI so i-frames can be located in binary file
+input_avi =  os.path.join(output_dir, 'datamoshing_input.avi')
 output_avi = os.path.join(output_dir, 'datamoshing_output.avi')
 # {} is where 'file_name' is put when making the 'output_video' variable
-output_video = os.path.join(output_dir, 'moshed_{}.mp4'.format(file_name))		# this ensures we won't over-write your original video
+# this ensures we won't over-write your original video
+output_video = os.path.join(output_dir, 'hehe_babierz_{}.mp4'.format(file_name))
 
 
 # THIS IS WHERE THE MAGIC HAPPENS
@@ -109,14 +123,14 @@ except OSError:
 	sys.exit()
 
 # convert original file to avi
-subprocess.call('ffmpeg -loglevel error -y -i ' + input_video + ' ' +
-				' -crf 0 -pix_fmt yuv420p -r ' + str(fps) + ' ' +
-				' -ss ' + str(start_sec) + ' -to ' + str(end_sec) + ' ' +
-				input_avi, shell=True)
+subprocess.Popen(
+    ['ffmpeg', '-loglevel', 'error', '-y', '-i', input_video, '-crf', '0', '-pix_fmt', 'yuv420p', '-r', str(fps), '-ss', str(start_sec), '-to', str(end_sec), '-filter:v', 'setpts='+ str(pow(speed, -1)) + '*PTS', input_avi], stdout=subprocess.PIPE
+)
 
 # open up the new files so we can read and write bytes to them
 in_file  = open(input_avi,  'rb')
 out_file = open(output_avi, 'wb')
+
 
 # because we used 'rb' above when the file is read the output is in byte format instead of Unicode strings
 in_file_bytes = in_file.read()
@@ -220,11 +234,9 @@ os.remove(output_avi)
      # the code was adapted from https://github.com/amgadani/Datamosh-python/blob/master/standard.py by @amgadani
      # which was adapted from https://github.com/grampajoe/Autodatamosh/blob/master/autodatamosh.pl by @joefriedl
 
-     # Here comes the disclaimer. This code is under the MIT License. 
+     # Here comes the disclaimer. This code is under the MIT License.
      # Basically you can include this code in commercial or personal projects and you're welcome to edit the code.
-     # If it breaks anything it's not my fault and I don't have to help you fix the work computer you broke while 
+     # If it breaks anything it's not my fault and I don't have to help you fix the work computer you broke while
      # glitching on company time.
      # Also I'm not obligated to help you fix or change the code but if your request is reasonable I probably will.
      # For instance, demanding that I program the next Facebook for free would be an unreasonable request.
-
-
